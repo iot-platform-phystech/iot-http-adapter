@@ -3,13 +3,25 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <cstdlib>
 
 int main()
 {
     auto &app = drogon::app();
 
-    auto coreClient =
-        drogon::HttpClient::newHttpClient("http://127.0.0.1:8000");
+    const char *coreUrl = std::getenv("IOT_CORE_URL");
+if (coreUrl == nullptr)
+{
+    coreUrl = "http://127.0.0.1:8000";
+}
+
+const char *adapterHost = std::getenv("IOT_ADAPTER_HOST");
+if (adapterHost == nullptr)
+{
+    adapterHost = "127.0.0.1";
+}
+
+auto coreClient = drogon::HttpClient::newHttpClient(coreUrl);
 
     app.registerHandler(
         "/api/v1/ingest",
@@ -71,6 +83,6 @@ int main()
         },
         {drogon::Post});
 
-    app.addListener("127.0.0.1", 8080);
+    app.addListener(adapterHost, 8080);
     app.run();
 }
