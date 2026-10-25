@@ -72,3 +72,5 @@ Testing/
 /CMakeUserPresets.json
 /.cache/
 compile_commands.json
+.env
+__pycache__/

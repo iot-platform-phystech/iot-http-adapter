@@ -1,88 +1,26 @@
 #include <drogon/drogon.h>
-
-#include <functional>
-#include <memory>
-#include <string>
+#include "controllers/AdapterController.h"
 #include <cstdlib>
-
-int main()
-{
-    auto &app = drogon::app();
-
-    const char *coreUrl = std::getenv("IOT_CORE_URL");
-if (coreUrl == nullptr)
-{
-    coreUrl = "http://127.0.0.1:8000";
+#include <iostream>
+namespace {
+std::string env(const char* name, const char* fallback = "") {
+    const auto value = std::getenv(name);
+    return value ? value : fallback;
 }
-
-const char *adapterHost = std::getenv("IOT_ADAPTER_HOST");
-if (adapterHost == nullptr)
-{
-    adapterHost = "127.0.0.1";
 }
-
-auto coreClient = drogon::HttpClient::newHttpClient(coreUrl);
-
-    app.registerHandler(
-        "/api/v1/ingest",
-        [coreClient](
-            const drogon::HttpRequestPtr &request,
-            std::function<void(const drogon::HttpResponsePtr &)> &&callback)
-        {
-            auto json = request->getJsonObject();
-
-            if (!json)
-            {
-                Json::Value error;
-                error["error"] = "Expected a JSON request body";
-
-                auto response =
-                    drogon::HttpResponse::newHttpJsonResponse(error);
-                response->setStatusCode(drogon::k400BadRequest);
-                callback(response);
-                return;
-            }
-
-            auto coreRequest = drogon::HttpRequest::newHttpJsonRequest(*json);
-            coreRequest->setMethod(drogon::Post);
-            coreRequest->setPath("/api/v1/ingest");
-
-            coreClient->sendRequest(
-                coreRequest,
-                [callback = std::move(callback)](
-                    drogon::ReqResult result,
-                    const drogon::HttpResponsePtr &coreResponse)
-                {
-                    if (result != drogon::ReqResult::Ok || !coreResponse)
-                    {
-                        Json::Value error;
-                        error["error"] = "iot-core is unavailable";
-
-                        auto response =
-                            drogon::HttpResponse::newHttpJsonResponse(error);
-                        response->setStatusCode(drogon::k502BadGateway);
-                        callback(response);
-                        return;
-                    }
-
-                    auto response = drogon::HttpResponse::newHttpResponse();
-                    response->setStatusCode(coreResponse->getStatusCode());
-                    response->setBody(std::string(coreResponse->getBody()));
-
-                    const auto contentType =
-                        coreResponse->getHeader("content-type");
-
-                    if (!contentType.empty())
-                    {
-                        response->addHeader("Content-Type", contentType);
-                    }
-
-                    callback(response);
-                },
-                5.0);
-        },
-        {drogon::Post});
-
-    app.addListener(adapterHost, 8080);
-    app.run();
+int main() {
+    try {
+        const auto key = iot::Decoder().decode(env("IOT_AES_KEY_BASE64"), "base64");
+        auto core = std::make_shared<iot::HttpRepository>(env("IOT_CORE_URL", "http://127.0.0.1:8000"));
+        const auto sensorUrl = env("IOT_SENSOR_URL");
+        auto sensor = sensorUrl.empty() ? nullptr : std::make_shared<iot::HttpRepository>(sensorUrl);
+        auto service = std::make_shared<iot::AdapterService>(core, sensor, key,
+            env("IOT_SENSOR_ALGORITHM", "aes-256-gcm"), env("IOT_SENSOR_PATH", "/api/v1/commands"));
+        iot::AdapterController(service).registerRoutes();
+        drogon::app().setClientMaxBodySize(2 * 1024 * 1024)
+            .addListener(env("IOT_ADAPTER_HOST", "127.0.0.1"), 8080).run();
+    } catch (const std::exception& e) {
+        std::cerr << "Adapter startup failed: " << e.what() << '\n';
+        return 1;
+    }
 }

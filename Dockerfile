@@ -30,7 +30,7 @@ FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y \
     libjsoncpp25 uuid-runtime zlib1g \
-    libssl3 libbrotli1 libpq5 \
+    libssl3 libbrotli1 libpq5 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/lib/ /usr/local/lib/
